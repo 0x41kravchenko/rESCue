@@ -34,6 +34,11 @@ void BleCanProxy::proxyIn(std::string in) {
     }
 
     if (length <= 6) {
+        Serial.printf("length <=6: in: ");
+        for (int len = 0; len < in.length(); len ++) {
+            Serial.printf("%d ", in.at(len));
+        }
+        Serial.printf("\n");
         twai_message_t tx_frame = {};
         tx_frame.extd = 1;
         tx_frame.identifier = (uint32_t(0x8000) << 16) + (uint16_t(CAN_PACKET_PROCESS_SHORT_BUFFER) << 8) + vesc_id;

@@ -178,8 +178,7 @@ void loop() {
 
     // measure and check voltage
     batMonitor->checkValues();
-
-    lightbar->updateLightBar(vescData.inputVoltage, vescData.switchState, vescData.adc1, vescData.adc2, vescData.erpm);  // update the WS28xx battery bar
+    lightbar->updateLightBar(vescData.inputVoltage, vescData.switchState, vescData.erpm);  // update the WS28xx battery bar
 
     // call the VESC UART-to-Bluetooth bridge
     bleServer->loop(&vescData, loopTime, maxLoopTime);

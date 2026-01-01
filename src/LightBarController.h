@@ -27,10 +27,10 @@ class LightBarController {
 public:
     LightBarController();
     void init();
-    void updateLightBar(double voltage, uint16_t switchstate, double adc1, double adc2, double erpm);
+    void updateLightBar(double voltage, uint16_t switchstate, double erpm);
 
 private:
-    static AdcState mapSwitchState(uint16_t intState, boolean isAdc1Enabled);
+    static AdcState mapSwitchState(uint16_t intState);
 
     static LightBarController *instance;
 

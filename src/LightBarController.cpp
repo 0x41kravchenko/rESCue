@@ -41,8 +41,8 @@ void LightBarController::init() {
 
 
 // updates the light bar, depending on the LED count
-void LightBarController::updateLightBar(double voltage, uint16_t switchstate, double adc1, double adc2, double erpm) {
-    AdcState adcState = this->mapSwitchState(switchstate, adc1 > adc2);
+void LightBarController::updateLightBar(double voltage, uint16_t switchstate, double erpm) {
+    AdcState adcState = this->mapSwitchState(switchstate);
     if (abs(erpm) > AppConfiguration::getInstance()->config.lightbarTurnOffErpm) {
         for (int i = 0; i < pixel_count; i++)
             lightPixels.setPixelColor(i, 0, 0, 0);
@@ -129,14 +129,15 @@ int LightBarController::calcVal(int value) {
     return map(value, 0, 100, 0, AppConfiguration::getInstance()->config.lightbarMaxBrightness);
 }
 
-AdcState LightBarController::mapSwitchState(uint16_t intState, boolean isAdc1Enabled) {
-    //Serial.printf("Map Switchstate: %d %d\n", intState, isAdc1Enabled);
+AdcState LightBarController::mapSwitchState(uint16_t intState) {
     switch (intState) {
         case 0:
             return AdcState::ADC_NONE;
         case 1:
-            return isAdc1Enabled ? AdcState::ADC_HALF_ADC1 : AdcState::ADC_HALF_ADC2;
+            return AdcState::ADC_HALF_ADC1;
         case 2:
+            return AdcState::ADC_HALF_ADC2;
+        case 3:
             return AdcState::ADC_FULL;
         default:
             ESP_LOGE(LOG_TAG_LIGHTBAR, "Unknown switch state");

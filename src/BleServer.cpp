@@ -20,8 +20,10 @@ bool deviceConnected = false;
 bool oldDeviceConnected = false;
 uint32_t value = 0;
 Stream *vescSerial;
-std::string vescBuffer;
-std::string updateBuffer;
+// std::string vescBuffer;
+char vescBuffer[2048]; // Adjust size as needed
+unsigned int vescBufferLength = 0; // Keep track of the current length
+// std::string updateBuffer;
 unsigned long bleLoop = 0;
 unsigned long loopTimeSum = 0;
 unsigned long loopCount = 0;
@@ -35,7 +37,7 @@ uint32_t frameNumber = 0;
 // NimBLEServerCallbacks::onConnect
 inline
 void BleServer::onConnect(NimBLEServer *pServer, ble_gap_conn_desc *desc) {
-    ESP_LOGI(LOG_TAG_BLESERVER, "Client connected: %s",  NimBLEAddress(desc->peer_ota_addr).toString().c_str());
+    ESP_LOGD(LOG_TAG_BLESERVER, "Client connected: %s",  NimBLEAddress(desc->peer_ota_addr).toString().c_str());
     ESP_LOGI(LOG_TAG_BLESERVER, "Multi-connect support: start advertising");
     deviceConnected = true;
     NimBLEDevice::startAdvertising();
@@ -44,7 +46,7 @@ void BleServer::onConnect(NimBLEServer *pServer, ble_gap_conn_desc *desc) {
 // NimBLEServerCallbacks::onDisconnect
 inline
 void BleServer::onDisconnect(NimBLEServer *pServer) {
-    ESP_LOGI(LOG_TAG_BLESERVER, "Client disconnected - start advertising");
+    ESP_LOGD(LOG_TAG_BLESERVER, "Client disconnected - start advertising");
     deviceConnected = false;
     NimBLEDevice::startAdvertising();
 }
@@ -52,7 +54,7 @@ void BleServer::onDisconnect(NimBLEServer *pServer) {
 // NimBLEServerCallbacks::onMTUChange
 inline
 void BleServer::onMTUChange(uint16_t MTU, ble_gap_conn_desc* desc) {
-    ESP_LOGI(LOG_TAG_BLESERVER, "MTU changed - new size %d, peer %s", MTU, NimBLEAddress(desc->peer_ota_addr).toString().c_str());
+    ESP_LOGD(LOG_TAG_BLESERVER, "MTU changed - new size %d, peer %s", MTU, NimBLEAddress(desc->peer_ota_addr).toString().c_str());
     MTU_SIZE = MTU;
     PACKET_SIZE = MTU_SIZE - 3;
 }
@@ -166,21 +168,47 @@ void BleServer::loop(VescData *vescData, unsigned long loopTime, unsigned long m
     
     if (vescSerial->available()) {
         int oneByte;
+        // Serial.println("vescSerial->available, read bytes: ");
         while (vescSerial->available()) {
             oneByte = vescSerial->read();
-            vescBuffer.push_back(oneByte);
+            // Serial.print(oneByte);
+            // Serial.printf("Before vescBuffer.push_back, vescBuffer.length() = %d\n", vescBuffer.length());
+            // esp32 core panic on esp32-c3-super-mini when using vescBuffer.push_back(oneByte);
+            // To be exact: Store Access Fault, MTVAL was 0x0, according to docs it's NULL pointer dereference
+            // vescBuffer.push_back(oneByte);
+            if (vescBufferLength < sizeof(vescBuffer) - 1) { // Ensure space for null-terminator
+                vescBuffer[vescBufferLength++] = oneByte;
+            }
+            // Serial.printf("After vescBuffer.push_back, vescBuffer.length() = %d\n", vescBuffer.length());
         }
+        // Serial.println("\nDone reading bytes");
+        vescBuffer[vescBufferLength] = '\0'; // Null-terminate
 
         if (deviceConnected) {
-            while (vescBuffer.length() > 0) {
-                if (vescBuffer.length() > PACKET_SIZE) {
-                    dumpBuffer("VESC => BLE/UART", vescBuffer.substr(0, PACKET_SIZE));
-                    pCharacteristicVescTx->setValue(vescBuffer.substr(0, PACKET_SIZE));
-                    vescBuffer = vescBuffer.substr(PACKET_SIZE);
+            while (vescBufferLength > 0) {
+                if (vescBufferLength > PACKET_SIZE) {
+                    // dumpBuffer("VESC => BLE/UART", vescBuffer.substr(0, PACKET_SIZE));
+                    // pCharacteristicVescTx->setValue(vescBuffer.substr(0, PACKET_SIZE));
+                    // vescBuffer = vescBuffer.substr(PACKET_SIZE);
+                    // Serial.printf("vescBufferLength > PACKET_SIZE(=%d): buffer: ", PACKET_SIZE);
+                    // for (int len = 0; len < PACKET_SIZE; len ++) {
+                    //     Serial.printf("%d ", vescBuffer[len]);
+                    // }
+                    // Serial.printf("\n");
+                    pCharacteristicVescTx->setValue((uint8_t*)vescBuffer, PACKET_SIZE);
+                    memmove(vescBuffer, vescBuffer + PACKET_SIZE, vescBufferLength - PACKET_SIZE);
+                    vescBufferLength -= PACKET_SIZE;
                 } else {
-                    dumpBuffer("VESC => BLE/UART", vescBuffer);
-                    pCharacteristicVescTx->setValue(vescBuffer);
-                    vescBuffer.clear();
+                    // dumpBuffer("VESC => BLE/UART", vescBuffer);
+                    // pCharacteristicVescTx->setValue(vescBuffer);
+                    // Serial.printf("vescBufferLength <= PACKET_SIZE(=%d) (else): buffer: ", PACKET_SIZE);
+                    // for (int len = 0; len < vescBufferLength; len ++) {
+                    //     Serial.printf("%d ", vescBuffer[len]);
+                    // }
+                    // Serial.printf("\n");
+                    pCharacteristicVescTx->setValue((uint8_t*)vescBuffer, vescBufferLength);
+                    // vescBuffer.clear();
+                    vescBufferLength = 0;
                 }
                 pCharacteristicVescTx->notify();
                 delay(bleWait); // bluetooth stack will go into congestion, if too many packets are sent
@@ -192,7 +220,7 @@ void BleServer::loop(VescData *vescData, unsigned long loopTime, unsigned long m
     if (!deviceConnected && oldDeviceConnected) {
         delay(500); // give the bluetooth stack the chance to get things ready
         pServer->startAdvertising(); // restart advertising
-        ESP_LOGI(LOG_TAG_BLESERVER, "start advertising");
+        ESP_LOGD(LOG_TAG_BLESERVER, "start advertising");
         oldDeviceConnected = deviceConnected;
     }
     // connecting
@@ -355,7 +383,7 @@ void BleServer::onWrite(BLECharacteristic *pCharacteristic) {
 
 //NimBLECharacteristicCallbacks::onSubscribe
 void BleServer::onSubscribe(NimBLECharacteristic *pCharacteristic, ble_gap_conn_desc *desc, uint16_t subValue) {
-    ESP_LOGI(LOG_TAG_BLESERVER,  "Client ID: %d, Address: %s, Subvalue %d, Characteristics %s ",
+    ESP_LOGD(LOG_TAG_BLESERVER,  "Client ID: %d, Address: %s, Subvalue %d, Characteristics %s ",
              desc->conn_handle, NimBLEAddress(desc->peer_ota_addr).toString().c_str(), subValue,
              pCharacteristic->getUUID().toString().c_str());
 }
