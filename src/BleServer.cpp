@@ -20,8 +20,10 @@ bool deviceConnected = false;
 bool oldDeviceConnected = false;
 uint32_t value = 0;
 Stream *vescSerial;
-std::string vescBuffer;
-std::string updateBuffer;
+// std::string vescBuffer;
+// std::string updateBuffer;
+char vescBuffer[2048]; // Adjust size as needed
+unsigned int vescBufferLength = 0; // Keep track of the current length
 unsigned long bleLoop = 0;
 unsigned long loopTimeSum = 0;
 unsigned long loopCount = 0;
@@ -168,19 +170,49 @@ void BleServer::loop(VescData *vescData, unsigned long loopTime, unsigned long m
         int oneByte;
         while (vescSerial->available()) {
             oneByte = vescSerial->read();
-            vescBuffer.push_back(oneByte);
+            // esp32 core panic on esp32-c3-super-mini when using vescBuffer.push_back(oneByte);
+            // To be exact: Store Access Fault, MTVAL was 0x0, according to docs it's NULL pointer dereference
+            // vescBuffer.push_back(oneByte);
+            if (vescBufferLength < sizeof(vescBuffer) - 1) { // Ensure space for null-terminator
+                vescBuffer[vescBufferLength++] = oneByte;
+            }
         }
+        vescBuffer[vescBufferLength] = '\0'; // Null-terminate
 
         if (deviceConnected) {
-            while (vescBuffer.length() > 0) {
-                if (vescBuffer.length() > PACKET_SIZE) {
-                    dumpBuffer("VESC => BLE/UART", vescBuffer.substr(0, PACKET_SIZE));
-                    pCharacteristicVescTx->setValue(vescBuffer.substr(0, PACKET_SIZE));
-                    vescBuffer = vescBuffer.substr(PACKET_SIZE);
+            // while (vescBuffer.length() > 0) {
+            //     if (vescBuffer.length() > PACKET_SIZE) {
+            //         dumpBuffer("VESC => BLE/UART", vescBuffer.substr(0, PACKET_SIZE));
+            //         pCharacteristicVescTx->setValue(vescBuffer.substr(0, PACKET_SIZE));
+            //         vescBuffer = vescBuffer.substr(PACKET_SIZE);
+            while (vescBufferLength > 0) {
+                if (vescBufferLength > PACKET_SIZE) {
+                    // dumpBuffer("VESC => BLE/UART", vescBuffer.substr(0, PACKET_SIZE));
+                    // pCharacteristicVescTx->setValue(vescBuffer.substr(0, PACKET_SIZE));
+                    // vescBuffer = vescBuffer.substr(PACKET_SIZE);
+                    // Serial.printf("vescBufferLength > PACKET_SIZE(=%d): buffer: ", PACKET_SIZE);
+                    // for (int len = 0; len < PACKET_SIZE; len ++) {
+                    //     Serial.printf("%d ", vescBuffer[len]);
+                    // }
+                    // Serial.printf("\n");
+                    pCharacteristicVescTx->setValue((uint8_t*)vescBuffer, PACKET_SIZE);
+                    memmove(vescBuffer, vescBuffer + PACKET_SIZE, vescBufferLength - PACKET_SIZE);
+                    vescBufferLength -= PACKET_SIZE;
                 } else {
-                    dumpBuffer("VESC => BLE/UART", vescBuffer);
-                    pCharacteristicVescTx->setValue(vescBuffer);
-                    vescBuffer.clear();
+                    // dumpBuffer("VESC => BLE/UART", vescBuffer);
+                    // pCharacteristicVescTx->setValue(vescBuffer);
+                    // vescBuffer.clear();
+                    // dumpBuffer("VESC => BLE/UART", vescBuffer);
+
+                    // pCharacteristicVescTx->setValue(vescBuffer);
+                    // Serial.printf("vescBufferLength <= PACKET_SIZE(=%d) (else): buffer: ", PACKET_SIZE);
+                    // for (int len = 0; len < vescBufferLength; len ++) {
+                    //     Serial.printf("%d ", vescBuffer[len]);
+                    // }
+                    // Serial.printf("\n");
+                    pCharacteristicVescTx->setValue((uint8_t*)vescBuffer, vescBufferLength);
+                    // vescBuffer.clear();
+                    vescBufferLength = 0;
                 }
                 pCharacteristicVescTx->notify();
                 delay(bleWait); // bluetooth stack will go into congestion, if too many packets are sent

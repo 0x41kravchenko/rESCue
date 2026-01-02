@@ -1,5 +1,7 @@
 #include "LightBarController.h"
 
+#define FOOTPADS_REVERSED false
+
 Adafruit_NeoPixel lightPixels = Adafruit_NeoPixel(AppConfiguration::getInstance()->config.numberPixelBatMon,
                                                   LIGHT_BAR_PIN, NEO_GRB + NEO_KHZ800);
 
@@ -67,7 +69,7 @@ void LightBarController::updateLightBar(double voltage, uint16_t switchstate, do
     if (adcState != lastAdcState) {
         for (int i = 0; i < pixel_count; i++) {
             int actualIndex = i;
-            if(AppConfiguration::getInstance()->config.isLightBarReversed) {
+            if(AppConfiguration::getInstance()->config.isLightBarReversed || !FOOTPADS_REVERSED) {
                 actualIndex = pixel_count - 1 - i;
             }
             lightPixels.setPixelColor(actualIndex, 0, 0, 0);
@@ -77,7 +79,7 @@ void LightBarController::updateLightBar(double voltage, uint16_t switchstate, do
                     break;
                 case ADC_HALF_ADC1:
                     if ((pixelCountOdd && i > (pixel_count / 2)) || (!pixelCountOdd && i >= (pixel_count / 2))) {
-                        lightPixels.setPixelColor(i, 153, 0, 153); // half purple
+                        lightPixels.setPixelColor(actualIndex, 153, 0, 153); // half purple
                     }
                     break;
                 case ADC_HALF_ADC2:
@@ -137,6 +139,8 @@ AdcState LightBarController::mapSwitchState(uint16_t intState, boolean isAdc1Ena
         case 1:
             return isAdc1Enabled ? AdcState::ADC_HALF_ADC1 : AdcState::ADC_HALF_ADC2;
         case 2:
+            return AdcState::ADC_HALF_ADC2;
+        case 3:
             return AdcState::ADC_FULL;
         default:
             ESP_LOGE(LOG_TAG_LIGHTBAR, "Unknown switch state");

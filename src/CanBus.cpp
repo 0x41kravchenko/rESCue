@@ -548,7 +548,7 @@ void CanBus::processFrame(twai_message_t rx_frame, int frameCount) {
             proxybuffer.push_back(rx_frame.data[i]);
         }
         // generate crc, cause data gets send without it
-        uint16_t crc =  crc16(&rx_frame.data[2], proxybuffer.size());
+        uint16_t crc =  crc16(proxybuffer.data(), proxybuffer.size());
 
         proxy->proxyOut(proxybuffer.data(), proxybuffer.size(), crc >> 8, crc & 0xff);
         proxybuffer.clear();
